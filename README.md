@@ -1,2 +1,3 @@
-# Factory-Safety-System
-IoT Project
+# Factory Safety System
+
+![Schematic](Schematic.png)
