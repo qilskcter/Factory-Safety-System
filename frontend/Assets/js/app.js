@@ -10,6 +10,7 @@ let lastGasAlert = null;
 let lastMotionAlert = null;
 let lastBackendAlert = null;
 let lastEsp32ActiveTime = null;
+let lastSystemReason = "An toàn";
 
 const dotBackend = document.getElementById("statusBackend");
 const dotPython = document.getElementById("statusPython");
@@ -92,6 +93,30 @@ function updateSensorUI(data) {
 
     const humEl = document.getElementById("humidity");
     if (humEl) humEl.innerHTML = data.humidity + " %";
+
+    const reasonEl = document.getElementById("alertReason");
+    if (reasonEl && data.alertReason) {
+        reasonEl.innerHTML = data.alertReason;
+        if (data.alertReason.includes("Nguy hiểm")) {
+            reasonEl.style.color = "#ff4d4d";
+        } else if (data.alertReason.includes("Cảnh báo")) {
+            reasonEl.style.color = "#ffa500";
+        } else {
+            reasonEl.style.color = "#2ecc71";
+        }
+
+        if (data.alertReason !== "An toàn" && data.alertReason !== lastSystemReason) {
+            const systemAlertObj = {
+                text: `<strong>[ESP32 ALERT]</strong><br>${data.alertReason}<br>Thời gian: ${new Date().toLocaleTimeString()}`,
+                image: "", 
+                imageCrop: ""
+            };
+            pushNotification(systemAlertObj);
+            lastSystemReason = data.alertReason;
+        } else if (data.alertReason === "An toàn") {
+            lastSystemReason = "An toàn";
+        }
+    }
 
     const gasEl = document.getElementById("gas");
     if (gasEl) {
@@ -242,9 +267,35 @@ if (alertBtn) {
     });
 }
 
+// ===== ĐIỀU KHIỂN RELAY TỪ NÚT WEB =====
+const relayBtn = document.getElementById("relayBtn");
+if (relayBtn) {
+    relayBtn.addEventListener("click", async () => {
+        try {
+            const response = await fetch(`${BASE_URL}/api/relay/toggle`, {
+                method: "POST"
+            });
+            const data = await response.json();
+            if (data.success) {
+                if (data.relayState === 1) {
+                    alert("🛑 Đã ra lệnh ÉP NGẮT RELAY (Mô-tơ dừng) từ xa!");
+                    relayBtn.style.background = "#7f8c8d"; // Đổi màu nút sang xám báo hiệu đang ngắt
+                    relayBtn.innerText = "RELAY: OFF (FORCED)";
+                } else {
+                    alert("✅ Đã đưa Relay về chế độ TỰ ĐỘNG theo cảm biến!");
+                    relayBtn.style.background = "#27ae60"; // Đổi về màu xanh bình thường
+                    relayBtn.innerText = "TOGGLE RELAY";
+                }
+            }
+        } catch (error) {
+            console.log("Error toggling relay:", error);
+            alert("❌ Không thể kết nối tới server để điều khiển Relay!");
+        }
+    });
+}
+
 updateNotificationUI();
 
-// LOGIC ĐIỀU KHIỂN HOẠT ĐỘNG CHUYỂN ĐỔI DARK MODE
 document.addEventListener("DOMContentLoaded", () => {
     const darkModeToggle = document.getElementById("darkModeToggle");
     const body = document.body;

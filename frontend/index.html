@@ -27,13 +27,23 @@
                     <h2>Khí Gas</h2>
                     <div class="value" id="gas">--</div>
                 </div>
+
+                <div class="card card-controls">
+                    <button id="relayBtn" class="btn-relay">TOGGLE RELAY</button>
+                    <button id="alertBtn">ALERT</button>
+                </div>
             </div>
 
             <h1 class="dashboard-title">FACTORY SAFETY SYSTEM</h1>
 
             <div class="camera-controls">
+                <div class="card system-reason-card">
+                    <h2>Lý do cảnh báo</h2>
+                    <div class="value reason-text" id="alertReason">Đang cập nhật...</div>
+                </div>
+
                 <button id="darkModeToggle" class="mode-toggle-btn">🌙</button>
-                <button id="alertBtn">ALERT</button>
+                
                 <div class="notification-wrapper">
                     <div id="notificationBell">🔔</div>
                     <span id="notificationCount">0</span>
