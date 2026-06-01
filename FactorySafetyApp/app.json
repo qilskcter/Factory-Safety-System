@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "FactorySafetyApp",
+    "slug": "FactorySafetyApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "factorysafetyapp",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.qilskcter.FactorySafetyApp"
+    },
+    "web": {
+      "output": "static",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-splash-screen"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9538c29b-431c-42bb-a0ee-df0276887a46"
+      }
+    }
+  }
+}
