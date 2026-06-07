@@ -121,7 +121,7 @@ void loop() {
       danger = true;
     }
 
-    bool isNear = (d < 50.0 && d > 0); 
+    bool isNear = (d < 10.0 && d > 0); 
     bool hasMotion = (m == 1);
 
     // KIỂM TRA ĐIỀU KIỆN 1: Nếu Web ra lệnh ÉP NGẮT hoặc hệ thống gặp DANGER tự động
@@ -154,8 +154,8 @@ void loop() {
         static bool toggleBuzzer = false;
         toggleBuzzer = !toggleBuzzer;
         digitalWrite(BUZZER_PIN, toggleBuzzer ? HIGH : LOW);
-        Serial.println("[ALERT] Khoảng cách < 50cm -> Đang hú còi!");
-        alertReason = "Cảnh báo: Vật thể xâm nhập khoảng cách gần (<50cm)!";
+        Serial.println("[ALERT] Khoảng cách < 10cm -> Đang hú còi!");
+        alertReason = "Cảnh báo: Vật thể xâm nhập khoảng cách gần (<10cm)!";
       } 
       else if (hasMotion) {
         Serial.println("[ALERT] Có chuyển động -> Kêu bíp ngắn 1 cái!");
