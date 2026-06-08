@@ -299,6 +299,7 @@ app.post("/api/buzzer/reset", (req, res) => {
 });
 
 // ===== API CLEAR TOÀN BỘ DỮ LIỆU HỆ THỐNG =====
+// ===== API CLEAR TOÀN BỘ DỮ LIỆU HỆ THỐNG =====
 app.post("/api/clear-all", (req, res) => {
     try {
         alerts = [];
@@ -321,6 +322,10 @@ app.post("/api/clear-all", (req, res) => {
             });
             console.log("[CLEAN] Đã dọn dẹp sạch toàn bộ kho ảnh lưu trữ trong python/images.");
         }
+
+        // THÊM TẠI ĐÂY: Phát tín hiệu Socket báo cho cả App và Web xóa lịch sử cục bộ
+        io.emit("history-cleared");
+        console.log("[SYNC] Đã phát tín hiệu 'history-cleared' tới tất cả Client đang kết nối.");
 
         res.json({
             success: true,

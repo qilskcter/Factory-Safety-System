@@ -61,6 +61,14 @@ socket.on("new-alert", (alert) => {
     pushNotification(alertObject);
 });
 
+// THÊM TẠI ĐÂY: Lắng nghe tín hiệu từ Backend khi bất kỳ thiết bị nào (App hoặc chính Web) yêu cầu xóa sạch
+socket.on("history-cleared", () => {
+    console.log("🔄 [SYNC] Nhận lệnh đồng bộ: Xóa sạch lịch sử thông báo hệ thống.");
+    notifications = []; // Làm rỗng dữ liệu trên RAM Web
+    localStorage.removeItem("notifications"); // Xóa sạch bộ nhớ cục bộ trên Web trình duyệt
+    updateNotificationUI(); // Làm mới lại giao diện hiển thị danh sách thông báo trống ngay lập tức
+});
+
 setInterval(() => {
     if (lastEsp32ActiveTime) {
         if (Date.now() - lastEsp32ActiveTime > 5000) {
@@ -279,11 +287,11 @@ if (relayBtn) {
             if (data.success) {
                 if (data.relayState === 1) {
                     alert("🛑 Đã ra lệnh ÉP NGẮT RELAY (Mô-tơ dừng) từ xa!");
-                    relayBtn.style.background = "#7f8c8d"; // Đổi màu nút sang xám báo hiệu đang ngắt
+                    relayBtn.style.background = "#7f8c8d"; 
                     relayBtn.innerText = "RELAY: OFF (FORCED)";
                 } else {
                     alert("✅ Đã đưa Relay về chế độ TỰ ĐỘNG theo cảm biến!");
-                    relayBtn.style.background = "#27ae60"; // Đổi về màu xanh bình thường
+                    relayBtn.style.background = "#27ae60"; 
                     relayBtn.innerText = "TOGGLE RELAY";
                 }
             }

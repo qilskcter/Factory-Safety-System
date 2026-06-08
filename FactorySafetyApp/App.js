@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Image, Alert, SafeAreaView, StatusBar } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Quản lý lưu trữ thông báo offline ổn định
 import io from 'socket.io-client';
 import { BASE_URL } from './src/constants/config';
 import ImageModal from './src/components/ImageModal';
@@ -17,12 +18,13 @@ export default function App() {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
   
-  // THÊM: State quản lý trạng thái rơ-le (0: Tự động, 1: Ép ngắt)
+  // State quản lý trạng thái rơ-le (0: Tự động, 1: Ép ngắt)
   const [webRelayForced, setWebRelayForced] = useState(0);
   
   const lastAlertRef = useRef("An toàn");
   const socket = useRef(null);
 
+  // BLOCK 1: Lắng nghe sự kiện thời gian thực thông qua WebSockets
   useEffect(() => {
     socket.current = io(BASE_URL, { transports: ['websocket'] });
     
@@ -62,12 +64,53 @@ export default function App() {
         imageCrop: alert.imageCrop || ""
       }, ...prev]);
     });
+
+    // THÊM TẠI ĐÂY: Lắng nghe sự kiện đồng bộ xóa lịch sử thông báo từ thiết bị khác (Web/App khác)
+    socket.current.on('history-cleared', async () => {
+      console.log("🔄 [SYNC] Nhận lệnh đồng bộ: Xóa sạch lịch sử thông báo trên thiết bị di động.");
+      try {
+        setNotifications([]); // Làm rỗng danh sách trên RAM
+        await AsyncStorage.removeItem('local_notifications'); // Xóa sạch dữ liệu lưu trữ vật lý offline dưới máy
+      } catch (err) {
+        console.log("Lỗi đồng bộ xóa thông báo local:", err);
+      }
+    });
     
     const interval = setInterval(() => setStreamTimestamp(Date.now()), 100);
     return () => { socket.current.disconnect(); clearInterval(interval); };
   }, []);
 
-  // THÊM: Hàm lấy trạng thái Relay hiện tại từ Server Backend
+  // BLOCK 2: Đọc dữ liệu lịch sử từ máy lên RAM ngay khi vừa mở ứng dụng lên (Tương đương với Web)
+  useEffect(() => {
+    const loadLocalNotifications = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('local_notifications');
+        if (saved) {
+          setNotifications(JSON.parse(saved));
+        }
+      } catch (err) {
+        console.log("Lỗi tải thông báo local:", err);
+      }
+    };
+    loadLocalNotifications();
+  }, []);
+
+  // BLOCK 3: QUAN TRỌNG - Tự động ghi đè danh sách mới vào bộ nhớ máy ngay khi Socket đẩy tin về RAM
+  useEffect(() => {
+    const saveNotifications = async () => {
+      try {
+        // Chỉ ghi vào máy nếu mảng notifications có dữ liệu (tránh ghi đè mảng trống khi đang load)
+        if (notifications && notifications.length > 0) {
+          await AsyncStorage.setItem('local_notifications', JSON.stringify(notifications));
+        }
+      } catch (err) {
+        console.log("Lỗi khi ghi đè lịch sử thông báo:", err);
+      }
+    };
+    saveNotifications();
+  }, [notifications]); // Kích hoạt ngay lập tức khi mảng notifications thay đổi
+
+  // Hàm lấy trạng thái Relay hiện tại từ Server Backend
   const checkCurrentRelayStatus = async () => {
     try {
       const response = await fetch(`${BASE_URL}/api/buzzer/status`);
@@ -80,7 +123,7 @@ export default function App() {
     }
   };
 
-  // THÊM: Hàm gửi lệnh đóng/ngắt Relay lên Server
+  // Hàm gửi lệnh đóng/ngắt Relay lên Server
   const triggerRelayToggle = async () => {
     try {
       const response = await fetch(`${BASE_URL}/api/relay/toggle`, { method: 'POST' });
@@ -98,7 +141,16 @@ export default function App() {
     }
   };
 
-  if (currentScreen === 'Notifications') return <NotificationsScreen notifications={notifications} setNotifications={setNotifications} onBack={() => setCurrentScreen('Home')} isDarkMode={isDarkMode} onOpenModal={(item) => { setSelectedAlert(item); setModalVisible(true); }} />;
+  if (currentScreen === 'Notifications') {
+    return (
+      <NotificationsScreen 
+        notifications={notifications} 
+        setNotifications={setNotifications} 
+        onBack={() => setCurrentScreen('Home')} 
+        isDarkMode={isDarkMode} 
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.safeArea, isDarkMode ? styles.darkBg : styles.lightBg]}>
@@ -120,7 +172,6 @@ export default function App() {
           
           <TouchableOpacity style={[styles.actionBtn, isDarkMode ? styles.darkCard : styles.lightCard]} onPress={() => setIsDarkMode(!isDarkMode)}><Text style={{fontSize: 14}}>{isDarkMode ? '☀️' : '🌙'}</Text></TouchableOpacity>
           
-          {/* THÊM: NÚT ĐIỀU KHIỂN TOGGLE RELAY (NẰM KẾ NÚT CẢNH BÁO) */}
           <TouchableOpacity 
             style={[styles.relayBtn, webRelayForced === 1 ? styles.relayBtnForced : styles.relayBtnAuto]} 
             onPress={triggerRelayToggle}
@@ -161,25 +212,13 @@ const styles = StyleSheet.create({
   appTitle: { fontSize: 20, fontWeight: 'bold' },
   cardContainer: { flexDirection: 'row', gap: 8 },
   sensorCard: { padding: 10, borderRadius: 10, flex: 1, height: 70, justifyContent: 'center', alignItems: 'center' },
-  
-  // Cấu hình lại thanh điều khiển để vừa vặn 5 khối (1 ô chữ + 4 nút bấm)
   controlRow: { flexDirection: 'row', gap: 5, height: 55, alignItems: 'center', width: '100%' },
   reasonBox: { flex: 1.5, padding: 8, borderRadius: 10, height: '100%', justifyContent: 'center' },
   actionBtn: { width: 38, height: '100%', borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  
-  // STYLE ĐỊNH DẠNG RIÊNG CHO NÚT RELAY TRÊN MOBILE
-  relayBtn: { 
-    width: 60, // Chiều rộng vừa đủ hiển thị chữ trạng thái ngắn gọn
-    height: '100%', 
-    borderRadius: 10, 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    elevation: 2
-  },
-  relayBtnAuto: { backgroundColor: '#27ae60' }, // Xanh lá khi chạy tự động
-  relayBtnForced: { backgroundColor: '#7f8c8d' }, // Xám khi ép ngắt rơ-le
+  relayBtn: { width: 60, height: '100%', borderRadius: 10, justifyContent: 'center', alignItems: 'center', elevation: 2 },
+  relayBtnAuto: { backgroundColor: '#27ae60' }, 
+  relayBtnForced: { backgroundColor: '#7f8c8d' }, 
   relayBtnText: { color: 'white', fontWeight: 'bold', fontSize: 11 },
-
   cameraFrame: { flex: 0.7, backgroundColor: 'black', borderRadius: 12, marginVertical: 8, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
   videoStream: { width: '100%', height: '100%' },
   footer: { padding: 10, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

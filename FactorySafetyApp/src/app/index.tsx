@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, Text, View, TouchableOpacity, Image, Alert, SafeAreaView 
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // THÊM: Import AsyncStorage để đồng bộ offline
 import io from 'socket.io-client';
 import { BASE_URL, API_URL } from '../constants/config';
 import ImageModal from '../components/ImageModal';
@@ -55,6 +56,7 @@ export default function HomeScreen() {
     }
   }, [statusPython]);
 
+  // BLOCK 1: Quản lý WebSocket kết nối thời gian thực
   useEffect(() => {
     socket.current = io(BASE_URL, { transports: ['websocket'] });
 
@@ -94,6 +96,17 @@ export default function HomeScreen() {
       });
     });
 
+    // THÊM TẠI ĐÂY: Lắng nghe tín hiệu xóa lịch sử đồng bộ từ hệ thống Server gửi về
+    socket.current.on('history-cleared', async () => {
+      console.log("🔄 [SYNC] Nhận lệnh đồng bộ: Xóa lịch sử thông báo qua index.tsx");
+      try {
+        setNotifications([]);
+        await AsyncStorage.removeItem('local_notifications');
+      } catch (err) {
+        console.log("Lỗi đồng bộ xóa dữ liệu:", err);
+      }
+    });
+
     const fallbackFetch = setInterval(async () => {
       try {
         const response = await fetch(API_URL);
@@ -121,6 +134,35 @@ export default function HomeScreen() {
       clearInterval(espCheck);
     };
   }, []);
+
+  // BLOCK 2: Đọc dữ liệu lịch sử từ bộ nhớ máy lên RAM khi khởi động
+  useEffect(() => {
+    const loadLocalNotifications = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('local_notifications');
+        if (saved) {
+          setNotifications(JSON.parse(saved));
+        }
+      } catch (err) {
+        console.log("Lỗi tải thông báo local:", err);
+      }
+    };
+    loadLocalNotifications();
+  }, []);
+
+  // BLOCK 3: Tự động ghi dữ liệu vào ổ cứng máy ngay khi danh sách RAM notifications thay đổi
+  useEffect(() => {
+    const saveNotifications = async () => {
+      try {
+        if (notifications && notifications.length > 0) {
+          await AsyncStorage.setItem('local_notifications', JSON.stringify(notifications));
+        }
+      } catch (err) {
+        console.log("Lỗi khi ghi lịch sử thông báo:", err);
+      }
+    };
+    saveNotifications();
+  }, [notifications]);
 
   const handleSensorUpdate = (data: any) => {
     setSensorData({
@@ -175,7 +217,6 @@ export default function HomeScreen() {
         setNotifications={setNotifications}
         isDarkMode={isDarkMode}
         onBack={() => setCurrentScreen('Home')}
-        onOpenModal={openImageDetail}
       />
     );
   }
@@ -184,13 +225,11 @@ export default function HomeScreen() {
     <SafeAreaView style={[styles.safeArea, isDarkMode ? styles.darkBg : styles.lightBg]}>
       <View style={styles.mainContainer}>
         
-        {/* KHỐI 1: HEADER CỐ ĐỊNH PHÍA TRÊN */}
         <View style={styles.fixedHeaderSection}>
           <Text style={[styles.appTitle, isDarkMode ? styles.darkTextMain : styles.lightTextMain]}>
             FACTORY SAFETY SYSTEM
           </Text>
 
-          {/* 3 ô cảm biến xếp sát nhau */}
           <View style={styles.sensorContainer}>
             <View style={[styles.sensorCard, isDarkMode ? styles.darkCardInner : styles.lightCardInner]}>
               <Text style={[styles.cardTitle, isDarkMode ? styles.darkTextSub : styles.lightTextSub]}>Nhiệt độ</Text>
@@ -215,7 +254,6 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Hàng ngang gom chung ô Lý do nhỏ gọn và cụm điều khiển bấm */}
           <View style={styles.controlsRowWrap}>
             <View style={[
               styles.systemReasonMiniCard, 
@@ -245,7 +283,6 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Dropdown danh sách thông báo thả nổi */}
           {showDropdown && (
             <View style={[styles.dropdown, isDarkMode ? styles.darkDropdown : styles.lightDropdown]}>
               <Text style={[styles.dropdownHeader, { color: isDarkMode ? '#e0e0e0' : '#111111' }]}>Thông báo mới nhất</Text>
@@ -270,7 +307,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* KHỐI 2: TRUNG TÂM (Khung chứa Video Camera - Tự dâng cao lấp đầy khoảng trống xám) */}
         <View style={styles.cameraContainerFixed}>
           {statusPython ? (
             <Image
@@ -293,7 +329,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* KHỐI 3: FOOTER TRẠNG THÁI KẾT NỐI (Ép dính chặt đáy vật lý sàn máy) */}
         <View style={[styles.updatedFooter, isDarkMode ? styles.darkCardInner : styles.lightCardInner]}>
           <Text style={[styles.updateTimeText, isDarkMode ? styles.darkTextSub : styles.lightTextSub]}>
             Update: <Text style={{ fontWeight: 'bold' }}>{sensorData.updatedAt || '--'}</Text>
@@ -330,143 +365,44 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   lightBg: { backgroundColor: '#f4f4f4' },
   darkBg: { backgroundColor: '#121212' },
-  
-  // Đổi thành flex-start để triệt tiêu lỗi kéo giãn khoảng cách bừa bãi của iOS
-  mainContainer: { 
-    flex: 1, 
-    padding: 12, 
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    width: '100%'
-  },
-
-  fixedHeaderSection: {
-    width: '100%',
-    zIndex: 50,
-    marginBottom: 10 // Tạo khoảng cách nhỏ gọn, vừa vặn với khung camera
-  },
-  appTitle: { 
-    fontSize: 22, 
-    fontWeight: 'bold', 
-    letterSpacing: 1, 
-    textAlign: 'center', 
-    marginTop: 65, // Hạ thấp tiêu đề xuống hẳn bên dưới tai thỏ rãnh khía
-    marginBottom: 12 
-  },
+  mainContainer: { flex: 1, padding: 12, justifyContent: 'flex-start', alignItems: 'center', width: '100%' },
+  fixedHeaderSection: { width: '100%', zIndex: 50, marginBottom: 10 },
+  appTitle: { fontSize: 22, fontWeight: 'bold', letterSpacing: 1, textAlign: 'center', marginTop: 65, marginBottom: 12 },
   lightTextMain: { color: '#111111' },
   darkTextMain: { color: '#e0e0e0' },
   lightTextSub: { color: '#555555' },
   darkTextSub: { color: '#b0b0b0' },
   whiteText: { color: '#ffffff' },
-  
-  sensorContainer: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    width: '100%', 
-    gap: 8, 
-    marginBottom: 10 // Gom sát với hàng điều khiển dưới
-  },
+  sensorContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', gap: 8, marginBottom: 10 },
   sensorCard: { flex: 1, padding: 10, borderRadius: 10, height: 72, justifyContent: 'center', elevation: 2 },
   lightCardInner: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#ddd' },
   darkCardInner: { backgroundColor: '#1e1e1e', borderWidth: 1, borderColor: '#333333' },
   dangerCardBg: { backgroundColor: '#d9534f', borderWidth: 1, borderColor: '#c9302c' },
-  
   cardTitle: { fontSize: 13, marginBottom: 2, fontWeight: 'bold' },
   cardValue: { fontSize: 20, fontWeight: 'bold' },
   safeText: { color: 'green' },
   warningText: { color: 'red' },
-
-  controlsRowWrap: {
-    flexDirection: 'row',
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8
-  },
-  systemReasonMiniCard: {
-    flex: 1.2, 
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    height: 52,
-    justifyContent: 'center',
-    elevation: 2
-  },
+  controlsRowWrap: { flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  systemReasonMiniCard: { flex: 1.2, paddingHorizontal: 10, borderRadius: 10, height: 52, justifyContent: 'center', elevation: 2 },
   reasonTitle: { fontSize: 12, fontWeight: 'bold', marginBottom: 1 },
   reasonText: { fontSize: 13, fontWeight: 'bold' },
-
-  rightButtonsContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 10
-  },
-  circleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 2
-  },
-  modeToggleBtn: { padding: 4 },
-  alertBtn: { 
-    backgroundColor: '#e74c3c', 
-    height: 44,
-    paddingHorizontal: 14, 
-    borderRadius: 10, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    elevation: 2 
-  },
+  rightButtonsContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 },
+  circleBtn: { width: 44, height: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center', elevation: 2 },
+  alertBtn: { backgroundColor: '#e74c3c', height: 44, paddingHorizontal: 14, borderRadius: 10, justifyContent: 'center', alignItems: 'center', elevation: 2 },
   alertBtnText: { color: 'white', fontWeight: 'bold', fontSize: 13 },
-  bellWrapper: { position: 'relative' },
   badge: { position: 'absolute', top: -4, right: -4, backgroundColor: 'red', borderRadius: 10, minWidth: 15, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', zIndex: 60 },
   badgeText: { color: 'white', fontSize: 9, fontWeight: 'bold' },
-
-  dropdown: { 
-    position: 'absolute', 
-    top: 155, 
-    left: 0,
-    right: 0,
-    borderRadius: 10, 
-    padding: 12, 
-    zIndex: 999, 
-    elevation: 10
-  },
+  dropdown: { position: 'absolute', top: 155, left: 0, right: 0, borderRadius: 10, padding: 12, zIndex: 999, elevation: 10 },
   lightDropdown: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#ccc' },
   darkDropdown: { backgroundColor: '#242424', borderWidth: 1, borderColor: '#444' },
   dropdownHeader: { fontWeight: 'bold', marginBottom: 6, fontSize: 14 },
   dropdownItem: { paddingVertical: 6, borderBottomWidth: 1 },
   emptyNotify: { fontSize: 12, color: 'gray', textAlign: 'center', marginVertical: 4 },
   viewMoreText: { color: 'purple', textAlign: 'center', marginTop: 6, fontSize: 12, fontWeight: 'bold' },
-
-  // SỬA LỖI: Dùng flex: 1 để tự động chiếm lĩnh và nở to tối đa lấp đầy khoảng xám thừa ở giữa màn hình
-  cameraContainerFixed: { 
-    flex: 1,
-    width: '100%', 
-    backgroundColor: 'black', 
-    borderRadius: 14, 
-    overflow: 'hidden', 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    elevation: 4
-  },
+  cameraContainerFixed: { flex: 1, width: '100%', backgroundColor: 'black', borderRadius: 14, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', elevation: 4 },
   pythonStreamView: { width: '100%', height: '100%' },
   cameraOfflineView: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-
-  // ÉP SÁT ĐÁY: Giữ khoảng cách nhỏ với camera, ép dính chặt chân viền dưới sàn máy di động
-  updatedFooter: { 
-    width: '100%', 
-    paddingVertical: 10, 
-    paddingHorizontal: 15, 
-    borderRadius: 10, 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    elevation: 2,
-    marginTop: 12
-  },
+  updatedFooter: { width: '100%', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 2, marginTop: 12 },
   updateTimeText: { fontSize: 12, color: '#555555' },
   connectionStatus: { flexDirection: 'row', gap: 10 },
   statusItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
